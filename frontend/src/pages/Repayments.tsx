@@ -45,7 +45,7 @@ export default function Repayments() {
 
     const success = await createRepaymentRecord(formData);
     if (success) {
-      message.success('还款记录创建成功');
+      message.success('还款记录创建成功，凭证已自动验证');
       setModalVisible(false);
       form.resetFields();
       setFileList([]);
@@ -297,7 +297,7 @@ export default function Repayments() {
         {previewImage && (
           <Image
             width={'100%'}
-            src={previewImage.startsWith('http') ? previewImage : `/api${previewImage}`}
+            src={previewImage.startsWith('http') ? previewImage : previewImage}
             alt="银行凭证"
           />
         )}

@@ -165,6 +165,7 @@ export const useDebtStore = create<DebtStore>((set) => ({
         set((state) => ({
           repaymentRecords: [...state.repaymentRecords, response.data!],
         }));
+        await useDebtStore.getState().fetchDebts();
         return true;
       } else {
         set({ error: response.error || '创建还款记录失败' });
@@ -187,6 +188,7 @@ export const useDebtStore = create<DebtStore>((set) => ({
             r.id === id ? { ...r, verified } : r
           ),
         }));
+        await useDebtStore.getState().fetchDebts();
         return true;
       }
       return false;
@@ -202,6 +204,7 @@ export const useDebtStore = create<DebtStore>((set) => ({
         set((state) => ({
           repaymentRecords: state.repaymentRecords.filter((r) => r.id !== id),
         }));
+        await useDebtStore.getState().fetchDebts();
         return true;
       }
       return false;

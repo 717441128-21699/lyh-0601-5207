@@ -29,7 +29,7 @@ import { reportApi } from '../services/api';
 import { MonthlyReport } from '../types';
 import dayjs, { Dayjs } from 'dayjs';
 
-const { RangePicker } = DatePicker;
+
 
 export default function Reports() {
   const { monthlyReports, fetchMonthlyReports, generateMonthlyReport, loading } = useDebtStore();

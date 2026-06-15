@@ -20,6 +20,7 @@ function initDatabase() {
       start_date TEXT NOT NULL,
       due_day INTEGER NOT NULL,
       note TEXT,
+      remaining_principal REAL NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -67,6 +68,17 @@ function initDatabase() {
     CREATE INDEX IF NOT EXISTS idx_reminder_settings_debt_id ON reminder_settings(debt_id);
     CREATE INDEX IF NOT EXISTS idx_monthly_reports_month ON monthly_reports(month);
   `);
+
+  const columns = db.prepare("PRAGMA table_info(debts)").all() as any[];
+  const hasRemainingPrincipal = columns.some((c: any) => c.name === 'remaining_principal');
+  if (!hasRemainingPrincipal) {
+    db.exec('ALTER TABLE debts ADD COLUMN remaining_principal REAL NOT NULL DEFAULT 0');
+  }
+
+  const debtsWithoutRemaining = db.prepare('SELECT * FROM debts WHERE remaining_principal = 0').all() as any[];
+  for (const debt of debtsWithoutRemaining) {
+    db.prepare('UPDATE debts SET remaining_principal = ? WHERE id = ?').run(debt.principal, debt.id);
+  }
 
   const globalReminder = db.prepare('SELECT * FROM reminder_settings WHERE debt_id IS NULL').get();
   if (!globalReminder) {

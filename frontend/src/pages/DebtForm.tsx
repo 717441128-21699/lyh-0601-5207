@@ -25,7 +25,7 @@ interface FormData {
 export default function DebtForm() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const { debts, createDebt, updateDebt, fetchDebtById, selectedDebt, loading, fetchDebts } = useDebtStore();
+  const { createDebt, updateDebt, fetchDebtById, selectedDebt, loading, fetchDebts } = useDebtStore();
   const [form] = Form.useForm<FormData>();
   const [previewData, setPreviewData] = useState<FormData | null>(null);
 

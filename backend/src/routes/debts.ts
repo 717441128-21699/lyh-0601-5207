@@ -20,6 +20,7 @@ router.get('/', (req, res) => {
       startDate: row.start_date,
       dueDay: row.due_day,
       note: row.note,
+      remainingPrincipal: row.remaining_principal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -47,6 +48,7 @@ router.get('/:id', (req, res) => {
       startDate: row.start_date,
       dueDay: row.due_day,
       note: row.note,
+      remainingPrincipal: row.remaining_principal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -63,9 +65,9 @@ router.post('/', (req, res) => {
     const now = new Date().toISOString();
 
     db.prepare(`
-      INSERT INTO debts (id, name, type, principal, annual_rate, term_months, repayment_method, start_date, due_day, note, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, name, type, principal, annualRate, termMonths, repaymentMethod, startDate, dueDay, note, now, now);
+      INSERT INTO debts (id, name, type, principal, annual_rate, term_months, repayment_method, start_date, due_day, note, remaining_principal, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, name, type, principal, annualRate, termMonths, repaymentMethod, startDate, dueDay, note, principal, now, now);
 
     const debt: Debt = {
       id,
@@ -78,6 +80,7 @@ router.post('/', (req, res) => {
       startDate,
       dueDay,
       note,
+      remainingPrincipal: principal,
       createdAt: now,
       updatedAt: now,
     };
@@ -154,10 +157,12 @@ router.get('/:id/schedule', (req, res) => {
     const paidPeriods = new Set<number>();
 
     for (const record of records) {
-      if (record.extra_payment > 0) {
-        extraPayments.set(record.period, record.extra_payment);
+      if (record.verified === 1) {
+        if (record.extra_payment > 0) {
+          extraPayments.set(record.period, record.extra_payment);
+        }
+        paidPeriods.add(record.period);
       }
-      paidPeriods.add(record.period);
     }
 
     const calculation = generateRepaymentSchedule(debt, extraPayments);

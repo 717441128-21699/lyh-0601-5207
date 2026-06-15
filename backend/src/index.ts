@@ -5,6 +5,7 @@ import debtsRouter from './routes/debts';
 import repaymentsRouter from './routes/repayments';
 import remindersRouter from './routes/reminders';
 import reportsRouter from './routes/reports';
+import { startScheduler, getUpcomingPaymentsForNotification } from './services/scheduler';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -31,10 +32,20 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ success: false, error: '服务器内部错误' });
 });
 
+app.get('/api/notifications/upcoming', (req, res) => {
+  try {
+    const payments = getUpcomingPaymentsForNotification();
+    res.json({ success: true, data: payments } as any);
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message } as any);
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`🚀 债务管理系统后端服务已启动`);
   console.log(`📡 服务地址: http://localhost:${PORT}`);
   console.log(`📊 健康检查: http://localhost:${PORT}/api/health`);
+  startScheduler();
 });
 
 export default app;

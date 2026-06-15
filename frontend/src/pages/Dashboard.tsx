@@ -20,7 +20,7 @@ export default function Dashboard() {
     fetchUpcomingPayments(14);
   }, [fetchDebts, fetchUpcomingPayments]);
 
-  const totalPrincipal = debts.reduce((sum, debt) => sum + debt.principal, 0);
+  const totalPrincipal = debts.reduce((sum, debt) => sum + (debt.remainingPrincipal || debt.principal), 0);
   const totalMonthlyPayment = debts.reduce((sum, debt) => {
     const calc = generateRepaymentSchedule(debt);
     return sum + calc.monthlyPayment;
@@ -41,9 +41,9 @@ export default function Dashboard() {
               title="负债总额"
               value={totalPrincipal}
               precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#cf1322' }}
               prefix={<MoneyCollectOutlined />}
+              suffix="元"
+              valueStyle={{ color: '#cf1322' }}
             />
           </Card>
         </Col>
@@ -53,9 +53,9 @@ export default function Dashboard() {
               title="每月还款"
               value={totalMonthlyPayment}
               precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#fa8c16' }}
               prefix={<CalendarOutlined />}
+              suffix="元"
+              valueStyle={{ color: '#fa8c16' }}
             />
           </Card>
         </Col>
@@ -65,9 +65,9 @@ export default function Dashboard() {
               title="总利息支出"
               value={totalInterest}
               precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#faad14' }}
               prefix={<RiseOutlined />}
+              suffix="元"
+              valueStyle={{ color: '#faad14' }}
             />
           </Card>
         </Col>
@@ -182,8 +182,13 @@ export default function Dashboard() {
                       />
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 16, fontWeight: 'bold' }}>
-                          ¥{debt.principal.toLocaleString()}
+                          ¥{(debt.remainingPrincipal || debt.principal).toLocaleString()}
                         </div>
+                        {(debt.remainingPrincipal !== undefined && debt.remainingPrincipal < debt.principal) && (
+                          <div style={{ color: '#52c41a', fontSize: 12 }}>
+                            已还 ¥{(debt.principal - debt.remainingPrincipal).toLocaleString()}
+                          </div>
+                        )}
                         <div style={{ color: '#999', fontSize: 12 }}>
                           总利息: ¥{calc.totalInterest.toFixed(0)}
                         </div>

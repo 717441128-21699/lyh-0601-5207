@@ -86,4 +86,15 @@ export const reportApi = {
   },
 };
 
+export interface UpcomingNotification {
+  debtName: string;
+  dueDate: string;
+  daysRemaining: number;
+  amount: number;
+}
+
+export const notificationApi = {
+  getUpcoming: () => api.get<ApiResponse<UpcomingNotification[]>>('/notifications/upcoming').then((res) => res.data),
+};
+
 export default api;

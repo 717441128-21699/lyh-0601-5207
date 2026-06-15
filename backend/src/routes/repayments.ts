@@ -62,10 +62,22 @@ router.post('/', upload.single('voucher'), (req, res) => {
       voucherUrl = `/uploads/${req.file.filename}`;
     }
 
+    const verified = voucherUrl ? 1 : 0;
+
     db.prepare(`
       INSERT INTO repayment_records (id, debt_id, period, amount, extra_payment, payment_date, voucher_url, verified, note, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, debtId, parseInt(period), parseFloat(amount), parseFloat(extraPayment) || 0, paymentDate, voucherUrl, 0, note, now);
+    `).run(id, debtId, parseInt(period), parseFloat(amount), parseFloat(extraPayment) || 0, paymentDate, voucherUrl, verified, note, now);
+
+    if (verified === 1) {
+      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(debtId) as any;
+      if (debt) {
+        const principalPaid = parseFloat(amount) + (parseFloat(extraPayment) || 0);
+        const newRemaining = Math.max(0, debt.remaining_principal - principalPaid);
+        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
+          .run(newRemaining, now, debtId);
+      }
+    }
 
     const record: RepaymentRecord = {
       id,
@@ -75,12 +87,12 @@ router.post('/', upload.single('voucher'), (req, res) => {
       extraPayment: parseFloat(extraPayment) || 0,
       paymentDate,
       voucherUrl,
-      verified: false,
+      verified: verified === 1,
       note,
       createdAt: now,
     };
 
-    res.json({ success: true, data: record, message: '还款记录创建成功' } as ApiResponse<RepaymentRecord>);
+    res.json({ success: true, data: record, message: '还款记录创建成功' + (verified ? '，已自动验证' : '') } as ApiResponse<RepaymentRecord>);
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message } as ApiResponse);
   }
@@ -90,13 +102,30 @@ router.put('/:id/verify', (req, res) => {
   try {
     const { id } = req.params;
     const { verified } = req.body;
+    const now = new Date().toISOString();
+
+    const record = db.prepare('SELECT * FROM repayment_records WHERE id = ?').get(id) as any;
+    if (!record) {
+      return res.status(404).json({ success: false, error: '还款记录不存在' } as ApiResponse);
+    }
 
     const result = db
       .prepare('UPDATE repayment_records SET verified = ? WHERE id = ?')
       .run(verified ? 1 : 0, id);
 
-    if (result.changes === 0) {
-      return res.status(404).json({ success: false, error: '还款记录不存在' } as ApiResponse);
+    if (result.changes > 0) {
+      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(record.debt_id) as any;
+      if (debt) {
+        const principalPaid = record.amount + (record.extra_payment || 0);
+        let newRemaining = debt.remaining_principal;
+        if (verified) {
+          newRemaining = Math.max(0, debt.remaining_principal - principalPaid);
+        } else {
+          newRemaining = debt.remaining_principal + principalPaid;
+        }
+        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
+          .run(newRemaining, now, record.debt_id);
+      }
     }
 
     res.json({ success: true, message: verified ? '还款已验证' : '已取消验证' } as ApiResponse);
@@ -108,6 +137,7 @@ router.put('/:id/verify', (req, res) => {
 router.delete('/:id', (req, res) => {
   try {
     const { id } = req.params;
+    const now = new Date().toISOString();
 
     const record = db.prepare('SELECT * FROM repayment_records WHERE id = ?').get(id) as any;
     if (!record) {
@@ -118,6 +148,16 @@ router.delete('/:id', (req, res) => {
       const voucherPath = path.join(__dirname, '../..', record.voucher_url);
       if (fs.existsSync(voucherPath)) {
         fs.unlinkSync(voucherPath);
+      }
+    }
+
+    if (record.verified === 1) {
+      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(record.debt_id) as any;
+      if (debt) {
+        const principalPaid = record.amount + (record.extra_payment || 0);
+        const newRemaining = debt.remaining_principal + principalPaid;
+        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
+          .run(newRemaining, now, record.debt_id);
       }
     }
 

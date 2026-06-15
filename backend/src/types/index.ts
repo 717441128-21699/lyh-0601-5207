@@ -15,6 +15,7 @@ export interface Debt {
   startDate: string;
   dueDay: number;
   note?: string;
+  remainingPrincipal: number;
   createdAt: string;
   updatedAt: string;
 }

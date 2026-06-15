@@ -45,11 +45,25 @@ export default function DebtList() {
       ),
     },
     {
-      title: '本金',
-      dataIndex: 'principal',
-      key: 'principal',
+      title: '剩余本金',
+      key: 'remainingPrincipal',
       width: 140,
-      render: (value) => <span style={{ fontWeight: 'bold' }}>¥{value.toLocaleString()}</span>,
+      render: (_, record) => {
+        const remaining = record.remainingPrincipal !== undefined ? record.remainingPrincipal : record.principal;
+        const hasPaid = remaining < record.principal;
+        return (
+          <div>
+            <div style={{ fontWeight: 'bold', color: hasPaid ? '#cf1322' : undefined }}>
+              ¥{remaining.toLocaleString()}
+            </div>
+            {hasPaid && (
+              <div style={{ fontSize: 11, color: '#52c41a' }}>
+                已还 ¥{(record.principal - remaining).toLocaleString()}
+              </div>
+            )}
+          </div>
+        );
+      },
     },
     {
       title: '年利率',
@@ -118,7 +132,7 @@ export default function DebtList() {
     },
   ];
 
-  const totalPrincipal = debts.reduce((sum, d) => sum + d.principal, 0);
+  const totalPrincipal = debts.reduce((sum, d) => sum + (d.remainingPrincipal || d.principal), 0);
   const totalInterest = debts.reduce((sum, d) => {
     const calc = generateRepaymentSchedule(d);
     return sum + calc.totalInterest;
@@ -143,9 +157,9 @@ export default function DebtList() {
               title="负债总额"
               value={totalPrincipal}
               precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#cf1322' }}
               prefix={<MoneyCollectOutlined />}
+              suffix="元"
+              valueStyle={{ color: '#cf1322' }}
             />
           </Card>
         </Col>
@@ -166,9 +180,9 @@ export default function DebtList() {
               title="总利息支出"
               value={totalInterest}
               precision={2}
-              prefix="¥"
-              valueStyle={{ color: '#faad14' }}
               prefix={<RiseOutlined />}
+              suffix="元"
+              valueStyle={{ color: '#faad14' }}
             />
           </Card>
         </Col>

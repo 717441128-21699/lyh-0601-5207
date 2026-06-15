@@ -1,5 +1,5 @@
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Layout, Menu, theme } from 'antd';
+import { Routes, Route, Link, useLocation, useEffect } from 'react-router-dom';
+import { Layout, Menu, theme, message } from 'antd';
 import {
   DashboardOutlined,
   CreditCardOutlined,
@@ -18,8 +18,11 @@ import PrepaymentSimulator from './pages/PrepaymentSimulator';
 import Repayments from './pages/Repayments';
 import Reminders from './pages/Reminders';
 import Reports from './pages/Reports';
+import { notificationApi, UpcomingNotification } from './services/api';
 
 const { Header, Content, Sider } = Layout;
+
+const notifiedPayments = new Set<string>();
 
 const menuItems = [
   {
@@ -69,6 +72,62 @@ function App() {
   const {
     token: { colorBgContainer, borderRadiusLG },
   } = theme.useToken();
+
+  useEffect(() => {
+    requestNotificationPermission();
+    checkUpcomingPayments();
+    const interval = setInterval(checkUpcomingPayments, 60 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const requestNotificationPermission = async () => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      const result = await Notification.requestPermission();
+      if (result === 'granted') {
+        message.success('已开启还款提醒通知');
+      }
+    }
+  };
+
+  const checkUpcomingPayments = async () => {
+    try {
+      const response = await notificationApi.getUpcoming();
+      if (response.success && response.data) {
+        response.data.forEach((payment: UpcomingNotification) => {
+          const key = `${payment.debtName}-${payment.dueDate}`;
+          if (!notifiedPayments.has(key)) {
+            showNotification(payment);
+            notifiedPayments.add(key);
+          }
+        });
+      }
+    } catch (error) {
+      console.error('检查还款提醒失败:', error);
+    }
+  };
+
+  const showNotification = (payment: UpcomingNotification) => {
+    if ('Notification' in window && Notification.permission === 'granted') {
+      const title = payment.daysRemaining === 0 
+        ? '🔔 今天是还款日！' 
+        : `⏰ 还款提醒：${payment.daysRemaining}天后到期`;
+      
+      const body = `${payment.debtName}\n应还金额：¥${payment.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n还款日期：${payment.dueDate}`;
+      
+      const notification = new Notification(title, {
+        body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+      });
+
+      notification.onclick = () => {
+        window.focus();
+        notification.close();
+      };
+
+      setTimeout(() => notification.close(), 10000);
+    }
+  };
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
