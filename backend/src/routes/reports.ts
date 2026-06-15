@@ -25,6 +25,7 @@ function generateMonthlyReport(month: string): MonthlyReport {
     startDate: row.start_date,
     dueDay: row.due_day,
     note: row.note,
+    remainingPrincipal: row.remaining_principal,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }));

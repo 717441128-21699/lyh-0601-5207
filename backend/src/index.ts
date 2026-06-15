@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
 import debtsRouter from './routes/debts';
 import repaymentsRouter from './routes/repayments';
 import remindersRouter from './routes/reminders';
@@ -10,12 +11,26 @@ import { startScheduler, getUpcomingPaymentsForNotification } from './services/s
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const uploadsDir = path.join(__dirname, '../uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/uploads', express.static(uploadsDir));
 
 app.get('/api/health', (req, res) => {
   res.json({ success: true, message: '债务管理系统API运行正常', timestamp: new Date().toISOString() });
+});
+
+app.get('/api/notifications/upcoming', (req, res) => {
+  try {
+    const payments = getUpcomingPaymentsForNotification();
+    res.json({ success: true, data: payments });
+  } catch (error) {
+    res.status(500).json({ success: false, error: (error as Error).message });
+  }
 });
 
 app.use('/api/debts', debtsRouter);
@@ -32,19 +47,11 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   res.status(500).json({ success: false, error: '服务器内部错误' });
 });
 
-app.get('/api/notifications/upcoming', (req, res) => {
-  try {
-    const payments = getUpcomingPaymentsForNotification();
-    res.json({ success: true, data: payments } as any);
-  } catch (error) {
-    res.status(500).json({ success: false, error: (error as Error).message } as any);
-  }
-});
-
 app.listen(PORT, () => {
   console.log(`🚀 债务管理系统后端服务已启动`);
   console.log(`📡 服务地址: http://localhost:${PORT}`);
   console.log(`📊 健康检查: http://localhost:${PORT}/api/health`);
+  console.log(`📁 上传目录: ${uploadsDir}`);
   startScheduler();
 });
 

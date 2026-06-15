@@ -148,6 +148,7 @@ router.get('/:id/schedule', (req, res) => {
       startDate: row.start_date,
       dueDay: row.due_day,
       note: row.note,
+      remainingPrincipal: row.remaining_principal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -197,6 +198,7 @@ router.post('/strategy', (req, res) => {
       startDate: row.start_date,
       dueDay: row.due_day,
       note: row.note,
+      remainingPrincipal: row.remaining_principal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
@@ -229,6 +231,7 @@ router.post('/:id/prepayment', (req, res) => {
       startDate: row.start_date,
       dueDay: row.due_day,
       note: row.note,
+      remainingPrincipal: row.remaining_principal,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

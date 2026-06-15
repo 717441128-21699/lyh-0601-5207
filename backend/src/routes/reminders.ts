@@ -1,7 +1,8 @@
 import express from 'express';
 import { v4 as uuidv4 } from 'uuid';
 import db from '../database';
-import { ApiResponse, ReminderSettings } from '../types';
+import { ApiResponse, Debt, ReminderSettings } from '../types';
+import { generateRepaymentSchedule } from '../utils/calculator';
 
 const router = express.Router();
 
@@ -137,8 +138,7 @@ router.get('/upcoming', (req, res) => {
       const daysRemaining = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 
       if (daysRemaining <= daysBefore + daysAhead) {
-        const { generateRepaymentSchedule } = require('../utils/calculator');
-        const debt = {
+        const debt: Debt = {
           id: row.id,
           name: row.name,
           type: row.type,
@@ -149,6 +149,7 @@ router.get('/upcoming', (req, res) => {
           startDate: row.start_date,
           dueDay: row.due_day,
           note: row.note,
+          remainingPrincipal: row.remaining_principal,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
         };

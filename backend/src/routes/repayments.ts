@@ -4,11 +4,12 @@ import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import fs from 'fs';
 import db from '../database';
-import { ApiResponse, RepaymentRecord } from '../types';
+import { ApiResponse, Debt, RepaymentRecord } from '../types';
+import { generateRepaymentSchedule } from '../utils/calculator';
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '../../uploads');
+const uploadDir = path.resolve(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
@@ -24,6 +25,57 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage: storage });
+
+function getPrincipalForPeriod(debt: Debt, period: number): number {
+  const schedule = generateRepaymentSchedule(debt);
+  const item = schedule.schedule.find((s) => s.period === period);
+  return item ? item.principal : 0;
+}
+
+function updateDebtRemainingPrincipal(
+  debtId: string,
+  recordId: string,
+  recordPeriod: number,
+  recordAmount: number,
+  recordExtraPayment: number,
+  isVerifying: boolean,
+  now: string
+): void {
+  const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(debtId) as any;
+  if (!debt) return;
+
+  const debtObj: Debt = {
+    id: debt.id,
+    name: debt.name,
+    type: debt.type,
+    principal: debt.principal,
+    annualRate: debt.annual_rate,
+    termMonths: debt.term_months,
+    repaymentMethod: debt.repayment_method,
+    startDate: debt.start_date,
+    dueDay: debt.due_day,
+    note: debt.note,
+    remainingPrincipal: debt.remaining_principal,
+    createdAt: debt.created_at,
+    updatedAt: debt.updated_at,
+  };
+
+  const principalPart = getPrincipalForPeriod(debtObj, recordPeriod);
+  const principalChange = principalPart + (recordExtraPayment || 0);
+
+  let newRemaining: number;
+  if (isVerifying) {
+    newRemaining = Math.max(0, debt.remaining_principal - principalChange);
+  } else {
+    newRemaining = debt.remaining_principal + principalChange;
+  }
+
+  db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?').run(
+    Math.round(newRemaining * 100) / 100,
+    now,
+    debtId
+  );
+}
 
 router.get('/debt/:debtId', (req, res) => {
   try {
@@ -67,16 +119,29 @@ router.post('/', upload.single('voucher'), (req, res) => {
     db.prepare(`
       INSERT INTO repayment_records (id, debt_id, period, amount, extra_payment, payment_date, voucher_url, verified, note, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, debtId, parseInt(period), parseFloat(amount), parseFloat(extraPayment) || 0, paymentDate, voucherUrl, verified, note, now);
+    `).run(
+      id,
+      debtId,
+      parseInt(period),
+      parseFloat(amount),
+      parseFloat(extraPayment) || 0,
+      paymentDate,
+      voucherUrl,
+      verified,
+      note,
+      now
+    );
 
     if (verified === 1) {
-      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(debtId) as any;
-      if (debt) {
-        const principalPaid = parseFloat(amount) + (parseFloat(extraPayment) || 0);
-        const newRemaining = Math.max(0, debt.remaining_principal - principalPaid);
-        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
-          .run(newRemaining, now, debtId);
-      }
+      updateDebtRemainingPrincipal(
+        debtId,
+        id,
+        parseInt(period),
+        parseFloat(amount),
+        parseFloat(extraPayment) || 0,
+        true,
+        now
+      );
     }
 
     const record: RepaymentRecord = {
@@ -92,7 +157,11 @@ router.post('/', upload.single('voucher'), (req, res) => {
       createdAt: now,
     };
 
-    res.json({ success: true, data: record, message: '还款记录创建成功' + (verified ? '，已自动验证' : '') } as ApiResponse<RepaymentRecord>);
+    res.json({
+      success: true,
+      data: record,
+      message: '还款记录创建成功' + (verified ? '，已自动验证' : ''),
+    } as ApiResponse<RepaymentRecord>);
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message } as ApiResponse);
   }
@@ -103,32 +172,41 @@ router.put('/:id/verify', (req, res) => {
     const { id } = req.params;
     const { verified } = req.body;
     const now = new Date().toISOString();
+    const targetVerified = verified ? 1 : 0;
 
     const record = db.prepare('SELECT * FROM repayment_records WHERE id = ?').get(id) as any;
     if (!record) {
       return res.status(404).json({ success: false, error: '还款记录不存在' } as ApiResponse);
     }
 
-    const result = db
-      .prepare('UPDATE repayment_records SET verified = ? WHERE id = ?')
-      .run(verified ? 1 : 0, id);
-
-    if (result.changes > 0) {
-      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(record.debt_id) as any;
-      if (debt) {
-        const principalPaid = record.amount + (record.extra_payment || 0);
-        let newRemaining = debt.remaining_principal;
-        if (verified) {
-          newRemaining = Math.max(0, debt.remaining_principal - principalPaid);
-        } else {
-          newRemaining = debt.remaining_principal + principalPaid;
-        }
-        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
-          .run(newRemaining, now, record.debt_id);
-      }
+    if (record.verified === targetVerified) {
+      return res.json({
+        success: true,
+        message: targetVerified === 1 ? '记录已是已验证状态' : '记录已是未验证状态',
+      } as ApiResponse);
     }
 
-    res.json({ success: true, message: verified ? '还款已验证' : '已取消验证' } as ApiResponse);
+    const result = db
+      .prepare('UPDATE repayment_records SET verified = ? WHERE id = ?')
+      .run(targetVerified, id);
+
+    if (result.changes > 0) {
+      const isVerifying = targetVerified === 1;
+      updateDebtRemainingPrincipal(
+        record.debt_id,
+        id,
+        record.period,
+        record.amount,
+        record.extra_payment || 0,
+        isVerifying,
+        now
+      );
+    }
+
+    res.json({
+      success: true,
+      message: targetVerified === 1 ? '还款已验证' : '已取消验证',
+    } as ApiResponse);
   } catch (error) {
     res.status(500).json({ success: false, error: (error as Error).message } as ApiResponse);
   }
@@ -145,20 +223,27 @@ router.delete('/:id', (req, res) => {
     }
 
     if (record.voucher_url) {
-      const voucherPath = path.join(__dirname, '../..', record.voucher_url);
-      if (fs.existsSync(voucherPath)) {
-        fs.unlinkSync(voucherPath);
+      try {
+        const filename = path.basename(record.voucher_url);
+        const voucherPath = path.join(uploadDir, filename);
+        if (fs.existsSync(voucherPath)) {
+          fs.unlinkSync(voucherPath);
+        }
+      } catch (e) {
+        console.warn('删除凭证文件失败:', e);
       }
     }
 
     if (record.verified === 1) {
-      const debt = db.prepare('SELECT * FROM debts WHERE id = ?').get(record.debt_id) as any;
-      if (debt) {
-        const principalPaid = record.amount + (record.extra_payment || 0);
-        const newRemaining = debt.remaining_principal + principalPaid;
-        db.prepare('UPDATE debts SET remaining_principal = ?, updated_at = ? WHERE id = ?')
-          .run(newRemaining, now, record.debt_id);
-      }
+      updateDebtRemainingPrincipal(
+        record.debt_id,
+        id,
+        record.period,
+        record.amount,
+        record.extra_payment || 0,
+        false,
+        now
+      );
     }
 
     db.prepare('DELETE FROM repayment_records WHERE id = ?').run(id);
